@@ -1,0 +1,12 @@
+[project]
+name = "quad-2d-rl"
+version = "0.1.0"
+description = "Entraînement RL (PPO) d'une politique de contrôle pour le simulateur quadrirotor 2D"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.3",
+    "torch>=2.2",
+    "numpy>=1.26",
+    "tqdm>=4.66",
+]
