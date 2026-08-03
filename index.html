@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sim Quadrirotor 2D — Cascade PID / LQR</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Quadrirotor planaire 2D <span class="sub">— birotor · 3 DDL</span></h1>
+    <p class="hint">Clique dans la scène pour déplacer la consigne 🎯</p>
+  </header>
+
+  <main>
+    <!-- Colonne gauche : simulation -->
+    <section class="sim-col">
+      <div class="canvas-wrap">
+        <canvas id="sim"></canvas>
+      </div>
+
+      <div class="toolbar">
+        <button id="btn-run">▶ Démarrer</button>
+        <button id="btn-reset">↺ Reset</button>
+        <button id="btn-kick">💨 Perturbation</button>
+        <label class="wind">
+          Vent
+          <input id="wind" type="range" min="-8" max="8" step="0.5" value="0" />
+          <span id="wind-val">0 N</span>
+        </label>
+      </div>
+
+      <div class="telemetry">
+        <div><span>t</span><b id="tel-t">0.00 s</b></div>
+        <div><span>x</span><b id="tel-x">0.00 m</b></div>
+        <div><span>y</span><b id="tel-y">0.00 m</b></div>
+        <div><span>θ</span><b id="tel-th">0.0°</b></div>
+        <div><span>θ_ref</span><b id="tel-thref">0.0°</b></div>
+        <div><span>F</span><b id="tel-F">0.00 N</b></div>
+        <div><span>M</span><b id="tel-M">0.000 N·m</b></div>
+        <div><span>T₁</span><b id="tel-T1">0.00 N</b></div>
+        <div><span>T₂</span><b id="tel-T2">0.00 N</b></div>
+      </div>
+    </section>
+
+    <!-- Colonne droite : contrôleur + gains -->
+    <aside class="panel-col">
+      <div class="ctrl-select">
+        <label for="controller-select">Contrôleur</label>
+        <select id="controller-select">
+          <option value="cascade">Cascade PID</option>
+          <option value="lqr">LQR</option>
+        </select>
+      </div>
+      <div id="params"><!-- sliders générés dynamiquement --></div>
+    </aside>
+  </main>
+
+  <!-- Ordre de chargement important (scripts classiques, compatibles file://) -->
+  <script src="js/math.js"></script>
+  <script src="js/dynamics.js"></script>
+  <script src="js/pid.js"></script>
+  <script src="js/controllers/base.js"></script>
+  <script src="js/controllers/cascadePID.js"></script>
+  <script src="js/controllers/lqr.js"></script>
+  <script src="js/simulator.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+/* style.css — thème sombre, mise en page à deux colonnes */
+:root {
+  --bg: #0e141b;
+  --panel: #16202b;
+  --panel-2: #1d2a38;
+  --line: #2a3a4c;
+  --text: #dfe7ef;
+  --muted: #8ea0b4;
+  --accent: #5aa0ff;
+  --accent-2: #ff7a59;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+header {
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+}
+header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+header h1 .sub { color: var(--muted); font-weight: 400; font-size: 14px; }
+header .hint { margin: 0; color: var(--muted); font-size: 13px; }
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 18px;
+  padding: 18px;
+  height: calc(100% - 52px);
+}
+
+/* --- Colonne simulation --- */
+.sim-col { display: flex; flex-direction: column; min-width: 0; }
+
+.canvas-wrap {
+  flex: 1;
+  min-height: 340px;
+  background: linear-gradient(180deg, #0c1119, #0f1a24);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+#sim { width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.toolbar button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background .15s, border-color .15s;
+}
+.toolbar button:hover { background: #263749; }
+.toolbar button.active { border-color: var(--accent); color: var(--accent); }
+.toolbar .wind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-left: auto;
+}
+.toolbar .wind input { width: 120px; }
+
+/* --- Télémétrie --- */
+.telemetry {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.telemetry div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.telemetry span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.telemetry b { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* --- Colonne panneau --- */
+.panel-col {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.ctrl-select { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.ctrl-select label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.ctrl-select select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.param-group { margin-bottom: 18px; }
+.param-group h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+.param-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 0;
+}
+.param-row label { color: var(--muted); font-size: 13px; }
+.param-row .param-val {
+  font-size: 13px;
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--line);
+  border-radius: 4px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #0e141b;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #0e141b;
+}
+
+@media (max-width: 820px) {
+  main { grid-template-columns: 1fr; height: auto; }
+  .panel-col { max-height: none; }
+}
