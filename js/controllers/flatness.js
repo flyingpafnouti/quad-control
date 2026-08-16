@@ -11,12 +11,17 @@
  *
  * Structure en cascade (feedback linearization) :
  *
- *   Boucle externe en cascade (position → vitesse SATURÉE → accélération) :
- *     v_sp = clamp( kp·(p_ref - p), ±v_max )      (consigne de vitesse bornée)
- *     a_d  = kd·(v_sp - v)                          (accélère vers v_sp)
- *   Borner la vitesse borne l'overshoot : le drone ne peut pas accumuler une
- *   vitesse iningérable sur un grand saut (⇒ pas de sortie de piste ni de
- *   plongeon dans le sol), tout en restant très agressif jusqu'à v_max.
+ *   Boucle externe en cascade (position → vitesse → accélération) avec profil
+ *   de vitesse TEMPS-OPTIMAL (« sqrt-controller », cf. ArduPilot) :
+ *     v_sp = clamp( sqrtController(p_ref - p, kp, aTraj), ±v_max )
+ *     a_d  = kd·(v_sp - v)
+ *   La consigne de vitesse suit l'enveloppe de décélération v = √(2·aTraj·|e|) :
+ *   le drone freine exactement à l'accélération maximale aTraj pour arriver à
+ *   vitesse nulle EN TEMPS MINIMAL et SANS overshoot (là où l'ancienne loi
+ *   linéaire v_sp = kp·e freinait trop mollement → longue traîne + dépassement).
+ *   Près de la cible (|e| < aTraj/kp²) on repasse en linéaire (pente kp) pour
+ *   éviter la pente infinie de la racine → pas de broutement. C'est le profil
+ *   bang-bang du Niveau 3, réalisé en boucle fermée (donc robuste au vent).
  *
  *   Inversion par platitude (EXACTE) du vecteur de poussée monde
  *     (ax_d, ay_d + g) :
@@ -48,17 +53,39 @@
     return a;
   }
 
+  /**
+   * « sqrt-controller » : consigne de vitesse temps-optimale pour un double
+   * intégrateur (rejoindre l'erreur nulle à vitesse nulle en temps minimal).
+   *   - loin de la cible : v = √(2·aLim·|e|)  (décélération au max aLim, bang-bang)
+   *   - près de la cible (|e| < aLim/kp²) : v = kp·e  (linéaire, évite la pente
+   *     infinie de la racine ⇒ pas de broutement).
+   * Les deux branches se raccordent en valeur ET en pente (C¹).
+   * @param {number} e    erreur de position (cible - position)
+   * @param {number} kp   gain de la zone linéaire proche
+   * @param {number} aLim accélération maximale du profil (m/s²)
+   */
+  function sqrtController(e, kp, aLim) {
+    if (aLim <= 0 || kp <= 0) return kp * e;
+    const linDist = aLim / (kp * kp);
+    if (e > linDist) return Math.sqrt(2 * aLim * (e - linDist / 2));
+    if (e < -linDist) return -Math.sqrt(2 * aLim * (-e - linDist / 2));
+    return kp * e;
+  }
+
   class Flatness extends BaseController {
     constructor(model) {
       super(model);
       this.name = 'Flatness';
 
-      // Boucle position en cascade P (pos→vitesse) puis PD (vitesse→accél).
-      //   kp : gain position→vitesse (1/s) ;  kd : gain vitesse→accél (1/s)
-      //   vMax : vitesse de croisière maximale (m/s) — levier d'agressivité.
-      //   ki : action intégrale (rejette le vent constant) + anti-windup.
-      this.pos = { kp: 3.0, kd: 8.0, vMax: 4.0, ki: 6.0 };
+      // Boucle position : profil de vitesse temps-optimal puis PD (vitesse→accél).
+      //   aTraj : accélération max du profil (m/s²) — LEVIER D'AGRESSIVITÉ n°1.
+      //   vMax  : vitesse de croisière maximale (m/s).
+      //   kp    : gain de la zone linéaire proche cible (1/s).
+      //   kd    : gain vitesse→accélération (1/s).
+      //   ki    : action intégrale (rejette le vent constant) + anti-windup.
+      this.pos = { aTraj: 6.0, vMax: 5.0, kp: 3.0, kd: 8.0, ki: 6.0 };
       this.iMaxAccel = 10.0;  // butée anti-windup sur la contribution intégrale (m/s²)
+      this.iZone = 0.75;      // n'intègre que dans cette zone d'arrivée (m) — anti-windup
       this.ix = 0;            // intégrateurs d'erreur de position
       this.iy = 0;
       // Boucle attitude, volontairement rapide (≫ boucle position).
@@ -84,23 +111,26 @@
       const { m, Iz, g, Tmax } = this.model.p;
       const P = this.pos, A = this.att;
 
-      // --- Boucle externe en cascade : position → vitesse saturée → accél ---
+      // --- Boucle externe : profil de vitesse temps-optimal → PD → accél ---
       const vm = P.vMax;
       const clamp = (v) => (v > vm ? vm : v < -vm ? -vm : v);
       const ex = ref.x - state.x;
       const ey = ref.y - state.y;
-      const vx_sp = clamp(P.kp * ex);
-      const vy_sp = clamp(P.kp * ey);
+      // Enveloppe de décélération temps-optimale (bang-bang), bornée à v_max.
+      const vx_sp = clamp(sqrtController(ex, P.kp, P.aTraj));
+      const vy_sp = clamp(sqrtController(ey, P.kp, P.aTraj));
 
       // Action intégrale avec double anti-windup :
-      //  (1) on n'intègre que HORS saturation de vitesse (phase d'arrivée),
-      //      pour ne pas s'emballer pendant le transit agressif ;
+      //  (1) on n'intègre que dans la ZONE D'ARRIVÉE (|erreur| < iZone), pour
+      //      ne pas s'emballer pendant le transit agressif ;
       //  (2) on borne la contribution intégrale (ki·i) à ±iMaxAccel.
       const iCap = this.iMaxAccel;
       const clampI = (v) => (v > iCap ? iCap : v < -iCap ? -iCap : v);
       if (dt > 0) {
-        if (Math.abs(P.kp * ex) < vm) this.ix = clampI(this.ix + P.ki * ex * dt);
-        if (Math.abs(P.kp * ey) < vm) this.iy = clampI(this.iy + P.ki * ey * dt);
+        if (Math.abs(ex) < this.iZone) this.ix = clampI(this.ix + P.ki * ex * dt);
+        else this.ix = 0;
+        if (Math.abs(ey) < this.iZone) this.iy = clampI(this.iy + P.ki * ey * dt);
+        else this.iy = 0;
       }
 
       const ax_d = P.kd * (vx_sp - state.vx) + this.ix;
@@ -142,8 +172,9 @@
         {
           label: 'Boucle position (agressivité)',
           params: [
+            { key: 'aTraj', label: 'a traj (m/s²)', min: 1, max: 16, step: 0.5, value: this.pos.aTraj },
             { key: 'vMax', label: 'v max (m/s)', min: 0.5, max: 12, step: 0.1, value: this.pos.vMax },
-            { key: 'kp', label: 'kp pos→v', min: 0.5, max: 10, step: 0.1, value: this.pos.kp },
+            { key: 'kp', label: 'kp (proche)', min: 0.5, max: 10, step: 0.1, value: this.pos.kp },
             { key: 'kd', label: 'kd v→a', min: 1, max: 25, step: 0.5, value: this.pos.kd },
             { key: 'ki', label: 'ki (anti-vent)', min: 0, max: 12, step: 0.1, value: this.pos.ki },
           ],
@@ -167,8 +198,8 @@
 
     setParams(o) {
       const set = (obj, k, v) => { if (v != null && !isNaN(v)) obj[k] = v; };
-      set(this.pos, 'vMax', o.vMax); set(this.pos, 'kp', o.kp);
-      set(this.pos, 'kd', o.kd); set(this.pos, 'ki', o.ki);
+      set(this.pos, 'aTraj', o.aTraj); set(this.pos, 'vMax', o.vMax);
+      set(this.pos, 'kp', o.kp); set(this.pos, 'kd', o.kd); set(this.pos, 'ki', o.ki);
       set(this.att, 'kpTh', o.kpTh); set(this.att, 'kdTh', o.kdTh);
       set(this, 'thrustLimit', o.tl);
       set(this, 'thMaxDeg', o.thmax);
