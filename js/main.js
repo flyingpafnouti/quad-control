@@ -13,6 +13,7 @@
   const controllers = {
     cascade: new QUAD.CascadePID(model),
     lqr: new QUAD.LQR(model),
+    mpc: new QUAD.MPC(model),
     rl: new QUAD.RLController(model),
   };
   let current = controllers.cascade;
