@@ -30,10 +30,13 @@
       super(model);
       this.name = 'Cascade PID';
 
-      // Gains par défaut (réglables via sliders)
-      this.pidX = new PID(1.1, 0.5, 1.7, { iMax: 6 });    // position horizontale
-      this.pidY = new PID(6.0, 3.0, 4.0, { iMax: 8 });    // altitude
-      this.pidTh = new PID(14.0, 0.0, 3.5, { iMax: 2 });  // attitude (tangage)
+      // Gains par défaut (réglables via sliders), placés par pulsation propre
+      // ω_n et amortissement ζ de chaque boucle (double intégrateur) :
+      //   kp = ω_n² , kd = 2·ζ·ω_n. La boucle interne (attitude) est réglée
+      //   ~4× plus rapide que les boucles externes — principe de la cascade.
+      this.pidX = new PID(10.0, 1.0, 5.6, { iMax: 5 });    // position X : ω_n≈3.2, ζ≈0.9
+      this.pidY = new PID(18.0, 7.0, 8.0, { iMax: 8 });    // altitude  : ω_n≈4.2, ζ≈0.9
+      this.pidTh = new PID(144.0, 0.0, 17.0, { iMax: 2 }); // attitude  : ω_n≈12,  ζ≈0.7
 
       this.tiltMax = 0.6; // inclinaison max autorisée (rad, ~34°)
     }
@@ -48,14 +51,21 @@
       const { m, g, Iz } = this.model.p;
 
       // --- Boucle altitude (Y) ---
-      const ay = this.pidY.update(ref.y - state.y, dt, state.vy);
-      // F compensée de l'inclinaison ; on borne cos pour éviter la singularité
+      // La poussée totale est bornée par 2·rotorMax -> borne sur l'accél. verticale
+      // commandée, passée au PID pour l'anti-windup (montées/descentes saturées).
       const cth = Math.max(0.4, Math.cos(state.th));
+      const ayMax = (2 * this.model.rotorMax() * cth) / m - g;
+      const ay = this.pidY.update(ref.y - state.y, dt, state.vy, { min: -g, max: ayMax });
+      // F compensée de l'inclinaison
       let F = (m * (g + ay)) / cth;
       if (F < 0) F = 0;
 
       // --- Boucle position (X) ---
-      const ax = this.pidX.update(ref.x - state.x, dt, state.vx);
+      // L'inclinaison est bornée à ±tiltMax, ce qui borne l'accélération
+      // horizontale réalisable : ax_max = (g+ay)·tan(tiltMax). On passe cette
+      // borne au PID pour l'anti-windup (évite l'emballement et le long tail).
+      const axLim = (g + ay) * Math.tan(this.tiltMax);
+      const ax = this.pidX.update(ref.x - state.x, dt, state.vx, { min: -axLim, max: axLim });
       // inclinaison désirée pour produire ax (signe : x'' = -(F/m) sin(theta))
       let thRef = -Math.atan2(ax, g + ay);
       thRef = Math.max(-this.tiltMax, Math.min(this.tiltMax, thRef));
@@ -74,25 +84,25 @@
         {
           label: 'Altitude (Y)',
           params: [
-            { key: 'y_kp', label: 'Kp', min: 0, max: 20, step: 0.1, value: this.pidY.kp },
+            { key: 'y_kp', label: 'Kp', min: 0, max: 40, step: 0.1, value: this.pidY.kp },
             { key: 'y_ki', label: 'Ki', min: 0, max: 15, step: 0.1, value: this.pidY.ki },
-            { key: 'y_kd', label: 'Kd', min: 0, max: 15, step: 0.1, value: this.pidY.kd },
+            { key: 'y_kd', label: 'Kd', min: 0, max: 20, step: 0.1, value: this.pidY.kd },
           ],
         },
         {
           label: 'Position (X)',
           params: [
-            { key: 'x_kp', label: 'Kp', min: 0, max: 5, step: 0.05, value: this.pidX.kp },
-            { key: 'x_ki', label: 'Ki', min: 0, max: 3, step: 0.05, value: this.pidX.ki },
-            { key: 'x_kd', label: 'Kd', min: 0, max: 5, step: 0.05, value: this.pidX.kd },
+            { key: 'x_kp', label: 'Kp', min: 0, max: 25, step: 0.1, value: this.pidX.kp },
+            { key: 'x_ki', label: 'Ki', min: 0, max: 5, step: 0.05, value: this.pidX.ki },
+            { key: 'x_kd', label: 'Kd', min: 0, max: 15, step: 0.1, value: this.pidX.kd },
           ],
         },
         {
           label: 'Attitude (θ)',
           params: [
-            { key: 'th_kp', label: 'Kp', min: 0, max: 40, step: 0.1, value: this.pidTh.kp },
+            { key: 'th_kp', label: 'Kp', min: 0, max: 260, step: 1, value: this.pidTh.kp },
             { key: 'th_ki', label: 'Ki', min: 0, max: 10, step: 0.1, value: this.pidTh.ki },
-            { key: 'th_kd', label: 'Kd', min: 0, max: 12, step: 0.1, value: this.pidTh.kd },
+            { key: 'th_kd', label: 'Kd', min: 0, max: 40, step: 0.1, value: this.pidTh.kd },
           ],
         },
         {

@@ -35,16 +35,15 @@
      * @param {number} dt   pas de temps (s)
      * @param {number|null} measRate  dérivée MESURÉE de la grandeur (ex: vitesse).
      *        Si fournie, le terme D vaut -kd*measRate (pas de kick).
-     * @returns {number} sortie du régulateur
+     * @param {{min:number,max:number}|null} sat  bornes de saturation de
+     *        l'actionneur en aval. Active l'anti-windup par intégration
+     *        conditionnelle (clamping) : l'intégrateur est GELÉ tant que la
+     *        sortie sature et que l'erreur pousse encore dans le même sens.
+     *        Empêche l'emballement responsable des longs dépassements.
+     * @returns {number} sortie du régulateur (bornée à sat si fourni)
      */
-    update(err, dt, measRate = null) {
-      // Terme intégral avec anti-windup par saturation
-      this.integ += this.ki * err * dt;
-      const iLim = this.iMax;
-      if (this.integ > iLim) this.integ = iLim;
-      else if (this.integ < -iLim) this.integ = -iLim;
-
-      // Terme dérivé
+    update(err, dt, measRate = null, sat = null) {
+      // Terme dérivé (indépendant de l'intégrale)
       let d;
       if (measRate != null) {
         d = -this.kd * measRate;
@@ -54,7 +53,26 @@
       }
       this.prevErr = err;
 
-      return this.kp * err + this.integ + d;
+      // Intégration tentative
+      const prevInteg = this.integ;
+      this.integ += this.ki * err * dt;
+      const iLim = this.iMax;
+      if (this.integ > iLim) this.integ = iLim;
+      else if (this.integ < -iLim) this.integ = -iLim;
+
+      let out = this.kp * err + this.integ + d;
+
+      // Anti-windup : si la sortie sature et que l'on pousse dans le même sens,
+      // on annule l'incrément d'intégrale de ce pas (clamping).
+      if (sat) {
+        if ((out > sat.max && err > 0) || (out < sat.min && err < 0)) {
+          this.integ = prevInteg;
+          out = this.kp * err + this.integ + d;
+        }
+        if (out > sat.max) out = sat.max;
+        else if (out < sat.min) out = sat.min;
+      }
+      return out;
     }
   }
 
