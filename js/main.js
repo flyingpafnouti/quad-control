@@ -14,6 +14,7 @@
     cascade: new QUAD.CascadePID(model),
     lqr: new QUAD.LQR(model),
     mpc: new QUAD.MPC(model),
+    flatness: new QUAD.Flatness(model),
     rl: new QUAD.RLController(model),
   };
   let current = controllers.cascade;
